@@ -1,0 +1,119 @@
+-- Create the user database
+CREATE DATABASE IF NOT EXISTS userdb;
+USE userdb;
+
+-- Create a table for Users
+CREATE TABLE IF NOT EXISTS Users (
+    username VARCHAR(100) PRIMARY KEY
+);
+
+-- Code for server.js
+require('dotenv').config();
+const axios = require('axios');
+const mariadb = require('mariadb');
+
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.use(express.json());
+
+app.get('/greeting', (req, res) => {
+    res.send("Hello World!");
+});
+
+
+// Create a MariaDB connection pool
+const pool = mariadb.createPool({
+    host: '127.0.0.1', // Use IP address to force TCP connection
+    port: 3306,
+    user: process.env.NAME,
+    password: process.env.PASSWORD,
+    database: 'userdb',
+    connectionLimit: 5
+});
+
+
+// /register end point
+app.post('/register', async (req, res) => {
+  const name = req.body.username;
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const isInternal = req.get('isInternal');
+    if (isInternal != "true"){
+        await axios.post('http://10.128.0.5/register', req.body, {
+            headers: {'isInternal': 'true'}
+        });
+        await conn.query('INSERT INTO Users(username) VALUES (?)', [name]);
+    } else {
+        await conn.query('INSERT INTO Users(username) VALUES (?)', [name]);
+    }
+
+    await conn.commit();
+    return res.status(201).send(req.body);
+
+  } catch (err) {
+    // If anything fails, rollback local insertion
+    if (conn) {
+      await conn.rollback();
+    }
+    return res.status(500).send(`Error adding user: ${err}`);
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+
+// /list end point
+app.get('/list', async (req, res) => {
+    let conn;
+    try {
+        conn = await pool.getConnection();
+        // Get all Users from the table
+        const users = await conn.query('SELECT * FROM Users');
+        res.json(users);
+    } catch (err) {
+        res.status(500).send(`Error retrieving users: ${err}`);
+    } finally {
+        if (conn) conn.release();
+    }
+});
+
+// /clear end point
+app.post('/clear', async (req, res) => {
+
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const isInternal = req.get('isInternal');
+    if (isInternal != "true"){
+        await axios.post('http://10.128.0.5/clear',{}, {
+            headers: {'isInternal': 'true'}
+        });
+        await conn.query('DELETE from Users');
+    } else {
+        await conn.query('DELETE from Users');
+    }
+
+    await conn.commit();
+    return res.status(201).send(req.body);
+
+  } catch (err) {
+    // If anything fails, rollback local insertion
+    if (conn) {
+      await conn.rollback();
+    }
+    return res.status(500).send(`Error adding user: ${err}`);
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
+app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
+});
