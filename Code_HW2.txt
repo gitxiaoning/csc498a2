@@ -73,8 +73,11 @@ app.get('/list', async (req, res) => {
     try {
         conn = await pool.getConnection();
         // Get all Users from the table
-        const users = await conn.query('SELECT * FROM Users');
-        res.json(users);
+        const users_data = await conn.query('SELECT * FROM Users');
+        const result = {
+                users: users_data.map(item => item.username)
+        };
+        res.json(result);
     } catch (err) {
         res.status(500).send(`Error retrieving users: ${err}`);
     } finally {
